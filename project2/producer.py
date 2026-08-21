@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class CDCProducer:
+    # Design choice: trigger-populated CDC table, not polling `employees`
+    # directly (the PDF's other suggested approach). Polling can only ever
+    # notice new rows -- there's no way to tell an UPDATE or DELETE
+    # happened just by re-scanning the table -- so it can't satisfy the
+    # "any insert/update/delete must replicate" requirement on its own.
 
     def __init__(self):
         self.topic = "employee_cdc"
@@ -36,6 +41,9 @@ class CDCProducer:
         )
 
     def get_last_cdc_id(self):
+        # Position is persisted in the source DB (producer_state), not
+        # just held in memory, so a restarted producer resumes from where
+        # it left off instead of replaying the entire CDC table.
         with self.db_conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -78,6 +86,10 @@ class CDCProducer:
             return cursor.fetchone()[0]
 
     def send_snapshot(self):
+        # Snapshot phase: before we start streaming incremental changes,
+        # the destination needs a full copy of whatever already exists in
+        # `employees` -- otherwise rows that predate the pipeline running
+        # would never show up on the other side.
         logger.info("Starting snapshot")
 
         with self.db_conn.cursor() as cursor:
@@ -106,6 +118,9 @@ class CDCProducer:
                 "dob": str(row[3]) if row[3] else None,
                 "city": row[4],
                 "salary": row[5],
+                # Its own action label (not "INSERT") so the consumer -- or
+                # anyone reading the topic -- can tell "initial load" apart
+                # from a genuine incremental insert.
                 "action": "SNAPSHOT"
             }
 
@@ -169,6 +184,11 @@ class CDCProducer:
 
         self.producer.flush()
 
+        # Only advance the saved position after the message is actually
+        # flushed to Kafka. If we crashed between the send() and here, the
+        # position wouldn't move, and we'd simply resend that change next
+        # time -- resending is safe (the consumer's writes are idempotent
+        # upserts/keyed deletes), silently skipping a change is not.
         self.save_last_cdc_id(change.cdc_id)
 
         logger.info(
@@ -186,12 +206,17 @@ class CDCProducer:
 
             # First startup: perform initial snapshot.
             if last_cdc_id == 0:
+                # Capture the CDC high-water mark *before* sending the
+                # snapshot, not after. Anything written to emp_cdc while
+                # the snapshot is in flight is already reflected in the
+                # `employees` rows we just read, but the streaming loop
+                # below still needs to see and replay it -- so we save
+                # this pre-snapshot value rather than the current max,
+                # which would let those in-flight changes slip through.
                 max_cdc_before_snapshot = self.get_max_cdc_id()
 
                 self.send_snapshot()
 
-                # Existing CDC records are already represented
-                # by the current snapshot.
                 self.save_last_cdc_id(max_cdc_before_snapshot)
 
                 logger.info(
@@ -205,6 +230,9 @@ class CDCProducer:
                 for row in rows:
                     self.send_change(row)
 
+                # Short poll interval keeps replication close to
+                # real-time (spec target: < 1 sec) without turning this
+                # into a tight busy loop hammering Postgres.
                 time.sleep(0.2)
 
         except KeyboardInterrupt:

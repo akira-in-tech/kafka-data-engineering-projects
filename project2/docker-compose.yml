@@ -6,8 +6,15 @@ services:
       - "29092:29092"
     environment:
       KAFKA_NODE_ID: 1
+      # KRaft mode (broker+controller in one process): no separate
+      # Zookeeper container needed for a single-node local demo.
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Two listeners on purpose: PLAINTEXT (9092) is how containers on
+      # the Docker network (e.g. kafka-ui) reach this broker by service
+      # name; PLAINTEXT_HOST (29092) is how host-side Python scripts
+      # reach it via localhost. Using the plain 9092/localhost pairing
+      # for both would break one side or the other.
       KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:29092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
@@ -17,6 +24,9 @@ services:
       CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
 
   kafka-ui:
+    # Optional but handy for the demo: lets you show the employee_cdc
+    # topic, its messages, and consumer group lag in a browser instead of
+    # only through terminal logs.
     image: provectuslabs/kafka-ui:latest
     container_name: project2-kafka-ui
     depends_on:
@@ -28,6 +38,8 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
   source-db:
+    # This is "db1" from the spec: the table apps write to, replicated
+    # via the trigger + emp_cdc table defined in init-db.sql.
     image: postgres:16
     container_name: project2-source-db
     environment:
@@ -41,6 +53,9 @@ services:
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
 
   destination-db:
+    # "db2" from the spec: a separate Postgres instance (not just a
+    # separate database in the same instance) so the demo actually shows
+    # cross-database replication, not just cross-table.
     image: postgres:16
     container_name: project2-destination-db
     environment:

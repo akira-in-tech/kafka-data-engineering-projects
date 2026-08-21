@@ -42,6 +42,12 @@ class CDCConsumer:
         with self.db_conn.cursor() as cursor:
 
             if action in ("INSERT", "SNAPSHOT"):
+                # Both the initial snapshot rows and later inserts go
+                # through the same UPSERT. That makes replay safe: if
+                # Kafka ever redelivers a message (e.g. a consumer group
+                # rebalance before the offset auto-commits), applying it
+                # again just overwrites the row with the same values
+                # instead of erroring on a duplicate key or duplicating data.
                 cursor.execute(
                     """
                     INSERT INTO employees (
@@ -72,6 +78,9 @@ class CDCConsumer:
                 )
 
             elif action == "UPDATE":
+                # Plain UPDATE keyed on emp_id -- setting the same columns
+                # to the same values twice is a no-op the second time, so
+                # this is naturally idempotent too.
                 cursor.execute(
                     """
                     UPDATE employees
@@ -94,6 +103,8 @@ class CDCConsumer:
                 )
 
             elif action == "DELETE":
+                # DELETE ... WHERE emp_id matches zero rows the second
+                # time it runs, so redelivery doesn't error here either.
                 cursor.execute(
                     """
                     DELETE FROM employees
@@ -103,6 +114,8 @@ class CDCConsumer:
                 )
 
             else:
+                # Defensive: keeps an unexpected/future action value from
+                # crashing the whole consumer loop.
                 logger.warning(
                     "Unknown action: %s",
                     action

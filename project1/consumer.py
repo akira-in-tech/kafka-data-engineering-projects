@@ -32,6 +32,8 @@ try:
     for message in consumer:
         employee = message.value
 
+        # Fact table: one row per employee record consumed, kept as-is
+        # for auditing/analytics beyond just the department totals.
         cur.execute(
             """
             INSERT INTO department_employee
@@ -47,6 +49,11 @@ try:
             )
         )
 
+        # Running per-department total via UPSERT: the first message for a
+        # department INSERTs the row, every message after that hits the
+        # ON CONFLICT branch and adds to the existing total. This avoids a
+        # separate "SELECT to check if the row exists" round trip and is
+        # atomic, so concurrent consumers (if we ever scale out) can't race.
         cur.execute(
             """
             INSERT INTO department_employee_salary
@@ -62,6 +69,12 @@ try:
             )
         )
 
+        # Commit per message (not batched) so the fact row and the running
+        # total always move together as one Postgres transaction -- never
+        # a fact row with no matching total, or vice versa. Note this is
+        # still at-least-once, not exactly-once: Kafka's offset auto-commit
+        # runs on its own timer, independent of this DB commit, so a crash
+        # in that window can replay a message the DB already applied.
         conn.commit()
 
         print(

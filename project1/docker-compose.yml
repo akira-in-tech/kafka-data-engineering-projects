@@ -9,6 +9,8 @@ services:
     image: postgres:16
     container_name: kafka-postgres
     ports:
+      # 5433, not the default 5432, so this can run next to a local
+      # Postgres install (or project2's own databases) without a clash.
       - "5433:5432"
     environment:
       POSTGRES_USER: postgres
@@ -16,6 +18,10 @@ services:
       POSTGRES_DB: kafka_project
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Postgres only runs files in docker-entrypoint-initdb.d/ once, on
+      # first boot against an empty data dir -- this is what creates the
+      # schema, so consumer.py never needs a manual `psql` setup step.
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
 
 volumes:
   postgres_data:

@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaTopicAdmin:
+    # Topic provisioning lives here, separate from producer/consumer, so
+    # it's a one-time (or safely re-runnable) setup step rather than
+    # something baked into the streaming scripts themselves.
 
     def __init__(self, bootstrap_servers="localhost:29092"):
         self.bootstrap_servers = bootstrap_servers
@@ -24,6 +27,10 @@ class KafkaTopicAdmin:
         )
 
         try:
+            # Single partition is enough here: CDC events for a given
+            # emp_id need to stay in arrival order (no key-based
+            # partitioning is used), and a single-broker local Kafka
+            # doesn't benefit from a higher replication factor.
             topic = NewTopic(
                 name=topic_name,
                 num_partitions=1,
@@ -35,6 +42,8 @@ class KafkaTopicAdmin:
             logger.info("Created topic: %s", topic_name)
 
         except TopicAlreadyExistsError:
+            # Re-running admin.py after a restart shouldn't crash just
+            # because the topic already exists.
             logger.info("Topic already exists: %s", topic_name)
 
         except Exception as exc:

@@ -2,6 +2,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+# The producer reads raw (index-based) tuples out of emp_cdc via psycopg2.
+# Wrapping each row in this dataclass gives it field names and a single
+# `to_dict()` -- the one place that defines the Kafka message shape the
+# consumer relies on -- instead of building the JSON payload ad hoc at the
+# call site.
 @dataclass
 class EmployeeChange:
     cdc_id: int

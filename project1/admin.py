@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaTopicAdmin:
+    # Topic provisioning is kept separate from producer/consumer so it can
+    # be run once (or safely re-run) as a setup step, instead of coupling
+    # topic creation to whichever script happens to run first.
 
     def __init__(self, bootstrap_servers="localhost:9092"):
         self.bootstrap_servers = bootstrap_servers
@@ -24,6 +27,9 @@ class KafkaTopicAdmin:
         )
 
         try:
+            # Single partition / replication factor 1: this is a local,
+            # single-broker demo, not a throughput or fault-tolerance
+            # exercise, so there's no need for more.
             topic = NewTopic(
                 name=topic_name,
                 num_partitions=1,
@@ -35,6 +41,8 @@ class KafkaTopicAdmin:
             logger.info("Created topic: %s", topic_name)
 
         except TopicAlreadyExistsError:
+            # Re-running admin.py (e.g. after restarting the pipeline)
+            # should be a no-op, not a crash.
             logger.info("Topic already exists: %s", topic_name)
 
         except Exception as exc:

@@ -73,6 +73,7 @@ kafka-projects/
 │   ├── admin.py
 │   ├── producer.py
 │   ├── consumer.py
+│   ├── init-db.sql
 │   ├── docker-compose.yml
 │   ├── requirements.txt
 │   └── resources/
