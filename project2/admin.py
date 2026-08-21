@@ -13,14 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaTopicAdmin:
+    """Creates Kafka topics for project2 (setup step, run before producer/consumer)."""
     # Topic provisioning lives here, separate from producer/consumer, so
     # it's a one-time (or safely re-runnable) setup step rather than
     # something baked into the streaming scripts themselves.
 
     def __init__(self, bootstrap_servers="localhost:29092"):
+        """Remember which Kafka broker to talk to."""
         self.bootstrap_servers = bootstrap_servers
 
     def create_topic(self, topic_name):
+        """Create `topic_name` if it doesn't exist yet; no-op if it already does."""
         admin = KafkaAdminClient(
             bootstrap_servers=self.bootstrap_servers,
             client_id="project2-admin"

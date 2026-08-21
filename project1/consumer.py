@@ -1,3 +1,9 @@
+"""Load step: read employee messages off Kafka and write them into Postgres.
+
+No functions here on purpose -- this is a single long-running loop, not a
+service with reusable pieces.
+"""
+
 import json
 import psycopg2
 from kafka import KafkaConsumer
@@ -32,8 +38,8 @@ try:
     for message in consumer:
         employee = message.value
 
-        # Fact table: one row per employee record consumed, kept as-is
-        # for auditing/analytics beyond just the department totals.
+        # --- Write the fact row: one line per employee record consumed,
+        # kept as-is for auditing/analytics beyond just the department totals.
         cur.execute(
             """
             INSERT INTO department_employee
@@ -49,7 +55,7 @@ try:
             )
         )
 
-        # Running per-department total via UPSERT: the first message for a
+        # --- Update the running per-department total via UPSERT: the first message for a
         # department INSERTs the row, every message after that hits the
         # ON CONFLICT branch and adds to the existing total. This avoids a
         # separate "SELECT to check if the row exists" round trip and is

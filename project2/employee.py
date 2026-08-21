@@ -9,6 +9,8 @@ from typing import Optional
 # call site.
 @dataclass
 class EmployeeChange:
+    """One row out of emp_cdc, with named fields instead of a raw index-based tuple."""
+
     cdc_id: int
     emp_id: int
     first_name: Optional[str]
@@ -19,6 +21,7 @@ class EmployeeChange:
     action: str
 
     def to_dict(self):
+        """Convert this change into the plain dict the producer sends as JSON."""
         return {
             "cdc_id": self.cdc_id,
             "emp_id": self.emp_id,

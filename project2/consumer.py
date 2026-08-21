@@ -14,8 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class CDCConsumer:
+    """Reads change events off Kafka and applies them to the destination DB.
+
+    Job breakdown, method by method:
+      __init__       -- open the Kafka consumer and destination-DB connection
+      process_change -- apply one message (SNAPSHOT/INSERT/UPDATE/DELETE)
+      run            -- the entry point: consume messages forever
+    """
 
     def __init__(self):
+        """Open the Kafka consumer and destination-DB connection this instance will reuse."""
         self.topic = "employee_cdc"
 
         self.consumer = KafkaConsumer(
@@ -37,6 +45,7 @@ class CDCConsumer:
         )
 
     def process_change(self, change):
+        """Apply one CDC message to `employees`: upsert, update, or delete by action."""
         action = change["action"]
 
         with self.db_conn.cursor() as cursor:
@@ -132,6 +141,7 @@ class CDCConsumer:
         )
 
     def run(self):
+        """Entry point: consume messages from Kafka forever, applying each one."""
         logger.info("CDC Consumer started")
 
         try:

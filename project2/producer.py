@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 class CDCProducer:
+    """Reads change events out of the source DB's emp_cdc table and ships them to Kafka.
+
+    Job breakdown, method by method:
+      __init__            -- open the source-DB connection and Kafka producer
+      get_last_cdc_id      -- where did we leave off? (read the saved cursor)
+      save_last_cdc_id     -- remember where we got to (write the cursor)
+      get_max_cdc_id        -- what's the newest cdc_id in emp_cdc right now?
+      send_snapshot          -- one-time: ship every existing `employees` row
+      get_changes             -- fetch any emp_cdc rows we haven't sent yet
+      send_change               -- ship one change row, then advance the cursor
+      run                        -- the entry point: snapshot once, then loop forever
+    """
     # Design choice: trigger-populated CDC table, not polling `employees`
     # directly (the PDF's other suggested approach). Polling can only ever
     # notice new rows -- there's no way to tell an UPDATE or DELETE
@@ -24,6 +36,7 @@ class CDCProducer:
     # "any insert/update/delete must replicate" requirement on its own.
 
     def __init__(self):
+        """Open the source-DB connection and Kafka producer this instance will reuse."""
         self.topic = "employee_cdc"
 
         self.db_conn = psycopg2.connect(
@@ -41,6 +54,7 @@ class CDCProducer:
         )
 
     def get_last_cdc_id(self):
+        """Return the cdc_id this producer last sent (0 if it's never run before)."""
         # Position is persisted in the source DB (producer_state), not
         # just held in memory, so a restarted producer resumes from where
         # it left off instead of replaying the entire CDC table.
@@ -58,6 +72,7 @@ class CDCProducer:
             return row[0] if row else 0
 
     def save_last_cdc_id(self, cdc_id):
+        """Persist `cdc_id` as the new cursor position, so a restart can resume from here."""
         with self.db_conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -75,6 +90,7 @@ class CDCProducer:
         self.db_conn.commit()
 
     def get_max_cdc_id(self):
+        """Return the highest cdc_id currently in emp_cdc (0 if the table is empty)."""
         with self.db_conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -86,6 +102,7 @@ class CDCProducer:
             return cursor.fetchone()[0]
 
     def send_snapshot(self):
+        """Send every current `employees` row to Kafka as a one-time SNAPSHOT message."""
         # Snapshot phase: before we start streaming incremental changes,
         # the destination needs a full copy of whatever already exists in
         # `employees` -- otherwise rows that predate the pipeline running
@@ -142,6 +159,7 @@ class CDCProducer:
         )
 
     def get_changes(self):
+        """Fetch every emp_cdc row newer than the saved cursor, oldest first."""
         last_cdc_id = self.get_last_cdc_id()
 
         with self.db_conn.cursor() as cursor:
@@ -166,6 +184,7 @@ class CDCProducer:
             return cursor.fetchall()
 
     def send_change(self, row):
+        """Send one emp_cdc row to Kafka, then advance the saved cursor past it."""
         change = EmployeeChange(
             cdc_id=row[0],
             emp_id=row[1],
@@ -199,6 +218,7 @@ class CDCProducer:
         )
 
     def run(self):
+        """Entry point: snapshot once on first run, then poll emp_cdc forever."""
         logger.info("CDC Producer started")
 
         try:

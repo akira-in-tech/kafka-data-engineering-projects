@@ -1,3 +1,9 @@
+"""Extract + transform step: read the CSV, filter/clean it, send each row to Kafka.
+
+No functions here on purpose -- this is a one-shot batch script, run top to
+bottom once per invocation, not a long-lived service with reusable pieces.
+"""
+
 import json
 import math
 import pandas as pd
@@ -13,6 +19,7 @@ producer = KafkaProducer(
 )
 
 
+# --- Extract: load the raw CSV ---
 df = pd.read_csv("resources/Employee_Salaries.csv")
 
 # Hire dates arrive as "10-Sep-1984" strings. Parsing once, up front, lets
@@ -23,6 +30,7 @@ df["Initial Hire Date"] = pd.to_datetime(
     format="%d-%b-%Y"
 )
 
+# --- Transform: keep only the rows/columns the spec asks for ---
 # Spec: keep only ECC/CIT/EMS, and only employees hired in 2010 or later.
 # Filtering with a vectorized pandas mask (instead of looping + if-checks)
 # is both the idiomatic pandas way and avoids parsing/comparing dates for
@@ -33,6 +41,7 @@ df = df[
 ]
 
 
+# --- Load: build each message and send it to Kafka ---
 for _, row in df.iterrows():
 
     employee = {
