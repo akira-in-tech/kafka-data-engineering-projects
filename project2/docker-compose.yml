@@ -1,0 +1,58 @@
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: project2-kafka
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: project2-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  source-db:
+    image: postgres:16
+    container_name: project2-source-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: source_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - source_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  destination-db:
+    image: postgres:16
+    container_name: project2-destination-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: destination_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - destination_data:/var/lib/postgresql/data
+      - ./init-destination.sql:/docker-entrypoint-initdb.d/init-destination.sql
+
+volumes:
+  source_data:
+  destination_data:
